@@ -16,10 +16,10 @@
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "https://github.com/maksim-leskin/"
+    "url": "https://github.com/maksim-leskin/brain_cards_api.git"
   },
   "bugs": {
-    "url": "https://github.com/maksim-leskin/issues",
+    "url": "https://github.com/maksim-leskin/brain_cards_api/issues",
     "email": "maksim.leskin@methed.ru"
   },
   "devDependencies": {
