@@ -77,13 +77,17 @@ const createCategory = async (data, rewrite = false) => {
     if (!category) throw new ApiError(404, { message: 'Item Not Found' });
     Object.assign(category, data);
   } else {
-    category = { ...data };
+    category = { title: data.title, pairs: data.pairs };
     category.id =
       category.id || `bc${Math.random().toString(36).substring(2, 12)}`;
     categoryList.push(category);
   }
   await writeFile(DB_CARD_URL, categoryList);
-  return category;
+  return categoryList.map(({ id, title, pairs }) => ({
+    id,
+    title,
+    length: pairs.length,
+  }));
 };
 
 const editCategory = async (itemId, data) => createCategory(data, true);
@@ -92,7 +96,11 @@ const delCategory = async itemId => {
   const categoryList = await readFile(DB_CARD_URL);
   const newList = categoryList.filter(item => item.id !== itemId);
   await writeFile(DB_CARD_URL, newList);
-  return {};
+  return newList.map(({ id, title, pairs }) => ({
+    id,
+    title,
+    length: pairs.length,
+  }));
 };
 
 const getCategoryList = async () => {
