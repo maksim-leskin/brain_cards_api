@@ -39,19 +39,19 @@ const shuffle = array => {
   return shuffleArray;
 };
 
-const createCategory = async ({ title, pairs = [] }) => {
-  if (!(typeof title === 'string')) {
+const createCategory = async (data, rewrite = false) => {
+  if (!(typeof data.title === 'string')) {
     throw new ApiError(400, { message: 'title обязательное свойство' });
   }
 
-  if (!Array.isArray(pairs)) {
+  if (!Array.isArray(data.pairs)) {
     throw new ApiError(400, {
       message: 'pairs обязательно должен быть массив',
     });
   }
 
-  if (pairs?.length) {
-    if (!Array.isArray(pairs[0])) {
+  if (data.pairs?.length) {
+    if (!Array.isArray(data.pairs[0])) {
       throw new ApiError(400, {
         message: 'pairs может содержать только массив',
       });
@@ -59,7 +59,7 @@ const createCategory = async ({ title, pairs = [] }) => {
   }
 
   if (
-    !pairs.every(
+    !data.pairs.every(
       item =>
         Array.isArray(item) &&
         typeof item[0] === 'string' &&
@@ -70,14 +70,29 @@ const createCategory = async ({ title, pairs = [] }) => {
       message: 'pairs должен содержать массивы с двумя строками',
     });
   }
-
-  const category = { title, pairs };
-  category.id = `bc${Math.random().toString(36).substring(2, 12)}`;
   const categoryList = await readFile(DB_CARD_URL);
-  categoryList.push(category);
+  let category = null;
+  if (rewrite) {
+    category = categoryList.find(({ id }) => id === data.id);
+    if (!category) throw new ApiError(404, { message: 'Item Not Found' });
+    Object.assign(category, data);
+  } else {
+    category = { ...data };
+    category.id =
+      category.id || `bc${Math.random().toString(36).substring(2, 12)}`;
+    categoryList.push(category);
+  }
   await writeFile(DB_CARD_URL, categoryList);
-
   return category;
+};
+
+const editCategory = async (itemId, data) => createCategory(data, true);
+
+const delCategory = async itemId => {
+  const categoryList = await readFile(DB_CARD_URL);
+  const newList = categoryList.filter(item => item.id !== itemId);
+  await writeFile(DB_CARD_URL, newList);
+  return {};
 };
 
 const getCategoryList = async () => {
@@ -106,7 +121,10 @@ const initServer = () => {
 
     // CORS заголовки ответа для поддержки кросс-доменных запросов из браузера
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader(
+      'Access-Control-Allow-Methods',
+      'GET, POST, PATCH, DELETE, OPTIONS',
+    );
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
     // запрос с методом OPTIONS может отправлять браузер автоматически
@@ -136,15 +154,45 @@ const initServer = () => {
         queryParams[key] = value ? decodeURIComponent(value) : '';
       }
     }
-
     // запрос на обработку POST запроса
     try {
-      if (req.method === 'POST' && req.url === `${URI_PREFIX}/category`) {
+      if (
+        req.method === 'POST' &&
+        (req.url === `${URI_PREFIX}/category` ||
+          req.url === `${URI_PREFIX}/category/`)
+      ) {
         const category = await createCategory(await drainJson(req));
         res.statusCode = 201;
         res.setHeader('Access-Control-Expose-Headers', 'Location');
         res.setHeader('Location', `${URI_PREFIX}/category/${category.id}`);
         res.end(JSON.stringify(category));
+        return;
+      }
+
+      if (
+        req.method === 'PATCH' &&
+        req.url.startsWith(`${URI_PREFIX}/category/`)
+      ) {
+        const index = uri.lastIndexOf('/');
+        const id = uri.substring(index + 1);
+        const category = await editCategory(id, await drainJson(req));
+        res.statusCode = 201;
+        res.setHeader('Access-Control-Expose-Headers', 'Location');
+        res.setHeader('Location', `${URI_PREFIX}/category/${category.id}`);
+        res.end(JSON.stringify(category));
+        return;
+      }
+
+      if (
+        req.method === 'DELETE' &&
+        req.url.startsWith(`${URI_PREFIX}/category/`)
+      ) {
+        const index = uri.lastIndexOf('/');
+        const id = uri.substring(index + 1);
+        const data = await delCategory(id);
+        res.statusCode = 200;
+        res.setHeader('Access-Control-Expose-Headers', 'Location');
+        res.end(JSON.stringify(data));
         return;
       }
     } catch (err) {
@@ -164,7 +212,10 @@ const initServer = () => {
     // запрос на обработку GET запроса
     try {
       if (req.method === 'GET') {
-        if (req.url === `${URI_PREFIX}/category`) {
+        if (
+          req.url === `${URI_PREFIX}/category` ||
+          req.url === `${URI_PREFIX}/category/`
+        ) {
           const categories = await getCategoryList();
           res.end(JSON.stringify(categories));
           return;
@@ -201,10 +252,21 @@ const initServer = () => {
       );
       console.log('Нажмите CTRL+C, чтобы остановить сервер');
       console.log('Доступные методы:');
-      console.log('GET  /api/category      - получить список категорий');
-      console.log('GET  /api/category/{id} - получить список пар по категории');
+      console.log('GET  /api/category         - получить список категорий');
       console.log(
-        `POST /api/category      - добавить категорию
+        'GET  /api/category/{id}    - получить список пар по категории',
+      );
+      console.log('DELETE  /api/category/{id} - удалить категорию');
+      console.log(
+        `POST /api/category         - добавить категорию
+        {
+          title: {},
+          pairs[]?:[[string, string]]
+        }
+      `,
+      );
+      console.log(
+        `PATCH /api/category/{id}   - обновить категорию
         {
           title: {},
           pairs[]?:[[string, string]]
